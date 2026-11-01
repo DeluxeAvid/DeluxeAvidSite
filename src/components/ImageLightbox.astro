@@ -1,29 +1,72 @@
 
 ---
----
 
 <dialog class="lightbox">
     <button class="close" aria-label="關閉圖片">×</button>
-    <img src="" alt="" />
+
+    <button class="navigation previous" aria-label="上一張圖片">‹</button>
+
+    <div class="image-container">
+        <img src="" alt="" />
+        <div class="counter"></div>
+    </div>
+
+    <button class="navigation next" aria-label="下一張圖片">›</button>
 </dialog>
 
 <script>
     const dialog = document.querySelector<HTMLDialogElement>('.lightbox');
     const preview = dialog?.querySelector<HTMLImageElement>('img');
     const closeButton = dialog?.querySelector<HTMLButtonElement>('.close');
+    const previousButton = dialog?.querySelector<HTMLButtonElement>('.previous');
+    const nextButton = dialog?.querySelector<HTMLButtonElement>('.next');
+    const counter = dialog?.querySelector<HTMLDivElement>('.counter');
 
-    if (dialog && preview && closeButton) {
+    if (
+        dialog &&
+        preview &&
+        closeButton &&
+        previousButton &&
+        nextButton &&
+        counter
+    ) {
+        let images: HTMLImageElement[] = [];
+        let currentIndex = 0;
+
+        function showImage(index: number) {
+            currentIndex = (index + images.length) % images.length;
+
+            const image = images[currentIndex];
+
+            preview.src = image.currentSrc || image.src;
+            preview.alt = image.alt;
+
+            counter.textContent = `${currentIndex + 1} / ${images.length}`;
+        }
+
+        function nextImage() {
+            showImage(currentIndex + 1);
+        }
+
+        function previousImage() {
+            showImage(currentIndex - 1);
+        }
+
         document.addEventListener('click', (event) => {
             const target = event.target;
 
             if (!(target instanceof HTMLImageElement)) return;
-
             if (!target.closest('.prose')) return;
 
-            const image = target;
+            images = Array.from(
+                document.querySelectorAll<HTMLImageElement>('.prose img')
+            );
 
-            preview.src = image.currentSrc || image.src;
-            preview.alt = image.alt;
+            currentIndex = images.indexOf(target);
+
+            if (currentIndex === -1) return;
+
+            showImage(currentIndex);
             dialog.showModal();
         });
 
@@ -31,15 +74,36 @@
             dialog.close();
         });
 
+        nextButton.addEventListener('click', nextImage);
+        previousButton.addEventListener('click', previousImage);
+
         dialog.addEventListener('click', (event) => {
             if (event.target === dialog) {
                 dialog.close();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (!dialog.open) return;
+
+            if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                nextImage();
+            }
+
+            if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                previousImage();
             }
         });
     }
 </script>
 
 <style>
+    :global(.prose img) {
+        cursor: zoom-in;
+    }
+
     .lightbox {
         position: fixed;
         inset: 0;
@@ -62,16 +126,32 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        gap: 1.5rem;
+    }
+
+    .image-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        max-width: calc(100% - 8rem);
+        max-height: 100%;
     }
 
     .lightbox img {
         display: block;
         max-width: 100%;
-        max-height: 100%;
+        max-height: calc(100% - 2rem);
         width: auto;
         height: auto;
         object-fit: contain;
         border-radius: 4px;
+    }
+
+    .counter {
+        margin-top: 0.75rem;
+        color: white;
+        font-size: 0.9rem;
     }
 
     .close {
@@ -83,11 +163,42 @@
         color: white;
         font-size: 2.5rem;
         cursor: pointer;
+        z-index: 2;
+    }
+
+    .navigation {
+        flex-shrink: 0;
+        width: 3rem;
+        height: 3rem;
+        border: none;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.15);
+        color: white;
+        font-size: 2rem;
+        cursor: pointer;
+    }
+
+    .navigation:hover {
+        background: rgba(255, 255, 255, 0.3);
     }
 
     @media (max-width: 720px) {
         .lightbox {
             padding: 1em;
+        }
+
+        .lightbox[open] {
+            gap: 0.4rem;
+        }
+
+        .image-container {
+            max-width: calc(100% - 4rem);
+        }
+
+        .navigation {
+            width: 2rem;
+            height: 2rem;
+            font-size: 1.5rem;
         }
 
         .close {
