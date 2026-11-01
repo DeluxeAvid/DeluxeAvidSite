@@ -1,0 +1,98 @@
+
+---
+---
+
+<dialog class="lightbox">
+    <button class="close" aria-label="關閉圖片">×</button>
+    <img src="" alt="" />
+</dialog>
+
+<script>
+    const dialog = document.querySelector<HTMLDialogElement>('.lightbox');
+    const preview = dialog?.querySelector<HTMLImageElement>('img');
+    const closeButton = dialog?.querySelector<HTMLButtonElement>('.close');
+
+    if (dialog && preview && closeButton) {
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+
+            if (!(target instanceof HTMLImageElement)) return;
+
+            if (!target.closest('.prose')) return;
+
+            const image = target;
+
+            preview.src = image.currentSrc || image.src;
+            preview.alt = image.alt;
+            dialog.showModal();
+        });
+
+        closeButton.addEventListener('click', () => {
+            dialog.close();
+        });
+
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                dialog.close();
+            }
+        });
+    }
+</script>
+
+<style>
+    .lightbox {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        padding: 3em;
+        border: none;
+        background: rgba(0, 0, 0, 0.9);
+        box-sizing: border-box;
+    }
+
+    .lightbox::backdrop {
+        background: rgba(0, 0, 0, 0.85);
+    }
+
+    .lightbox[open] {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .lightbox img {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        border-radius: 4px;
+    }
+
+    .close {
+        position: absolute;
+        top: 1rem;
+        right: 1.5rem;
+        border: none;
+        background: transparent;
+        color: white;
+        font-size: 2.5rem;
+        cursor: pointer;
+    }
+
+    @media (max-width: 720px) {
+        .lightbox {
+            padding: 1em;
+        }
+
+        .close {
+            top: 0.5rem;
+            right: 1rem;
+        }
+    }
+</style>
