@@ -4,6 +4,16 @@ description: 'Lorem ipsum dolor sit amet'
 pubDate: 'Jun 01 2024'
 heroImage: '../../assets/blog-placeholder-5.jpg'
 ---
+import Figure from '../../components/Figure.astro';
+import placeholderImage from '../../assets/blog-placeholder-1.jpg';
+
+import ImageCompare from '../../components/ImageCompare.astro';
+import placeholderImage2 from '../../assets/blog-placeholder-2.jpg';
+
+import ImageGallery from '../../components/ImageGallery.astro';
+import placeholderImage3 from '../../assets/blog-placeholder-3.jpg';
+import placeholderImage4 from '../../assets/blog-placeholder-4.jpg';
+import placeholderImage5 from '../../assets/blog-placeholder-5.jpg';
 
 This theme comes with the [@astrojs/mdx](https://docs.astro.build/en/guides/integrations-guide/mdx/) integration installed and configured in your `astro.config.mjs` config file. If you prefer not to use MDX, you can disable support by removing the integration from your config file.
 
@@ -12,6 +22,83 @@ This theme comes with the [@astrojs/mdx](https://docs.astro.build/en/guides/inte
 MDX is a special flavor of Markdown that supports embedded JavaScript & JSX syntax. This unlocks the ability to [mix JavaScript and UI Components into your Markdown content](https://docs.astro.build/en/guides/integrations-guide/mdx/#mdx-in-astro) for things like interactive charts or alerts.
 
 If you have existing content authored in MDX, this integration will hopefully make migrating to Astro a breeze.
+
+## Image Test
+
+這是一張普通圖片，應該跟隨正文的寬度。
+
+<Figure
+    src={placeholderImage}
+    alt="普通寬度圖片"
+    caption="這是普通圖片的圖說"
+/>
+
+這是一張寬幅圖片，應該延伸到正文欄位之外。
+
+<Figure
+    src={placeholderImage}
+    alt="寬幅圖片"
+    caption="這是寬幅圖片的圖說"
+    layout="wide"
+/>
+
+## Image Comparison
+
+以下測試兩張圖片並排展示的效果。
+
+<ImageCompare
+    left={placeholderImage}
+    right={placeholderImage2}
+    leftAlt="第一張測試圖片"
+    rightAlt="第二張測試圖片"
+    leftCaption="圖片 A"
+    rightCaption="圖片 B"
+/>
+
+<ImageCompare
+    left={placeholderImage}
+    right={placeholderImage2}
+    leftAlt="寬幅圖片 A"
+    rightAlt="寬幅圖片 B"
+    leftCaption="寬幅比較：圖片 A"
+    rightCaption="寬幅比較：圖片 B"
+    layout="wide"
+/>
+
+## Image Gallery
+
+以下測試三欄圖片畫廊。
+
+<ImageGallery
+    images={[
+        {
+            src: placeholderImage,
+            alt: "圖片一",
+            caption: "第一張圖片",
+        },
+        {
+            src: placeholderImage2,
+            alt: "圖片二",
+            caption: "第二張圖片",
+        },
+        {
+            src: placeholderImage3,
+            alt: "圖片三",
+            caption: "第三張圖片",
+        },
+        {
+            src: placeholderImage4,
+            alt: "圖片四",
+            caption: "第四張圖片",
+        },
+        {
+            src: placeholderImage5,
+            alt: "圖片五",
+            caption: "第五張圖片",
+        },
+    ]}
+	layout="wide"
+/>
 
 ## Example
 
