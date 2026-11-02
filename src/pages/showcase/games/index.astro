@@ -1,0 +1,61 @@
+
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="遊戲收藏">
+    <h1>遊戲收藏</h1>
+
+    <p>
+        這裡將整理我的遊戲收藏、遊玩資料與相關統計。
+    </p>
+
+    <div class="games-grid">
+        <a href={`${import.meta.env.BASE_URL}showcase/games/steam`} class="games-card">
+            <h2>Steam 收藏</h2>
+            <p>Steam 遊戲收藏、絕版遊戲與收藏統計。</p>
+        </a>
+
+        <a href={`${import.meta.env.BASE_URL}showcase/games/statistics`} class="games-card">
+            <h2>遊戲統計</h2>
+            <p>遊戲收藏數據、評分分布與相關分析。</p>
+        </a>
+    </div>
+</BaseLayout>
+
+<style>
+    .games-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .games-card {
+        display: block;
+        padding: 1.5rem;
+        border: 1px solid rgb(var(--gray-light));
+        border-radius: 8px;
+        text-decoration: none;
+        transition: border-color 0.2s ease;
+    }
+
+    .games-card h2 {
+        margin-top: 0;
+    }
+
+    .games-card p {
+        margin-bottom: 0;
+        color: rgb(var(--gray));
+    }
+
+    .games-card:hover {
+        border-color: rgb(var(--gray));
+    }
+
+    @media (max-width: 600px) {
+        .games-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

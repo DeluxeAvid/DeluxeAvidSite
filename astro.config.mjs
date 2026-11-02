@@ -7,7 +7,7 @@ import { defineConfig, fontProviders } from "astro/config";
 // https://astro.build/config
 export default defineConfig({
   site: 'https://deluxeavid.github.io',
-  base: '/DeluxeAvidSite',
+  base: import.meta.env.DEV ? '/' : '/DeluxeAvidSite',
   integrations: [mdx(), sitemap()],
   fonts: [
     {

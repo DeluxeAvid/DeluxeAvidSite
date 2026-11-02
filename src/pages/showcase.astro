@@ -1,0 +1,72 @@
+
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="展示">
+    <h1>展示</h1>
+
+    <p>
+        這裡將整理和展示我的個人收藏、作品與資料。
+    </p>
+
+
+<div class="showcase-grid">
+    <a href={`${import.meta.env.BASE_URL}showcase/games`} class="showcase-card">
+        <h2>遊戲收藏</h2>
+        <p>Steam 收藏、遊戲資料與相關統計。</p>
+    </a>
+
+    <a href={`${import.meta.env.BASE_URL}showcase/galgame`} class="showcase-card">
+        <h2>Galgame</h2>
+        <p>Galgame 收藏、評分與個人整理。</p>
+    </a>
+
+    <a href={`${import.meta.env.BASE_URL}showcase/physical-games`} class="showcase-card">
+        <h2>實體收藏</h2>
+        <p>PS2、PS3、PSP 等實體遊戲收藏。</p>
+    </a>
+
+    <a href={`${import.meta.env.BASE_URL}showcase/others`} class="showcase-card">
+        <h2>其他收藏</h2>
+        <p>其他值得整理和展示的個人收藏。</p>
+    </a>
+</div>
+</BaseLayout>
+
+<style>
+    .showcase-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .showcase-card {
+        display: block;
+        padding: 1.5rem;
+        border: 1px solid rgb(var(--gray-light));
+        border-radius: 8px;
+        text-decoration: none;
+        transition: border-color 0.2s ease;
+    }
+
+    .showcase-card h2 {
+        margin-top: 0;
+    }
+
+    .showcase-card p {
+        margin-bottom: 0;
+        color: rgb(var(--gray));
+    }
+
+    .showcase-card:hover {
+        border-color: rgb(var(--gray));
+    }
+
+    @media (max-width: 600px) {
+        .showcase-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
