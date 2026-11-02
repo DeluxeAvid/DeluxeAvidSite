@@ -1,0 +1,67 @@
+
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="專題">
+    <h1>專題 Projects</h1>
+
+    <p>
+        這裡整理具有持續性和系統性的個人專題，
+        記錄長期企劃、深入討論與持續跟進的內容。
+    </p>
+
+    <div class="projects-grid">
+        <a href={`${import.meta.env.BASE_URL}projects/website`} class="project-card">
+            <h2>網站建設與技術</h2>
+            <p>記錄個人網站的架構設計、功能開發與技術探索。</p>
+        </a>
+
+        <a href={`${import.meta.env.BASE_URL}projects/research`} class="project-card">
+            <h2>遊戲與文化研究</h2>
+            <p>圍繞遊戲作品、文化背景及相關議題進行系統性整理。</p>
+        </a>
+
+        <a href={`${import.meta.env.BASE_URL}projects/ongoing`} class="project-card">
+            <h2>長期觀察與追蹤</h2>
+            <p>持續記錄需要跨越較長時間觀察的主題與變化。</p>
+        </a>
+    </div>
+</BaseLayout>
+
+<style>
+    .projects-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .project-card {
+        display: block;
+        padding: 1.5rem;
+        border: 1px solid rgb(var(--gray-light));
+        border-radius: 8px;
+        text-decoration: none;
+        transition: border-color 0.2s ease;
+    }
+
+    .project-card h2 {
+        margin-top: 0;
+    }
+
+    .project-card p {
+        margin-bottom: 0;
+        color: rgb(var(--gray));
+    }
+
+    .project-card:hover {
+        border-color: rgb(var(--gray));
+    }
+
+    @media (max-width: 600px) {
+        .projects-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
