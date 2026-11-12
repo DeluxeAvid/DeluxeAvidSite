@@ -1,6 +1,7 @@
 from pathlib import Path
 import argparse
 import re
+import shutil
 from datetime import datetime
 from pypinyin import lazy_pinyin
 
@@ -287,8 +288,11 @@ def yaml_quote(value):
 
 
 def main():
-    print("===== WORD-TO-MDX DEBUG VERSION 2 =====")
     args = parse_args()
+
+    if not args.description.strip():
+        raise ValueError("文章描述不可為空白，請提供有效的 --description。")
+
     input_path = args.input
 
     if not input_path.exists():
@@ -305,134 +309,185 @@ def main():
     document = Document(input_path)
 
     title = input_path.stem.replace("_", " ")
+
     filename = input_path.stem.lower()
+    filename = re.sub(r"[\s_]+", "-", filename)
+
     pinyin_name = "-".join(lazy_pinyin(filename))
-    slug = re.sub(r"[^a-z0-9]+", "-", pinyin_name).strip("-")
+    slug = re.sub(r"[^a-z0-9]+", "-", pinyin_name)
+    slug = re.sub(r"-+", "-", slug).strip("-")
 
     if not slug:
         slug = f"article-{args.date}"
 
     article_dir = Path("src/content/blog") / slug
     image_dir = article_dir / "images"
-    output_path = article_dir / "index.md"
 
-    if output_path.exists():
-        raise FileExistsError(f"文章已存在，為避免覆寫而中止轉換：{output_path}")
-
-    article_dir.mkdir(parents=True, exist_ok=True)
-    image_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"已成功讀取：{input_path.name}")
-    print(f"文章標題：{title}\n========== 開始轉換 ==========\n")
-
-    image_map = {}
-    output_blocks = []  # 改為儲存區塊 (Block)
-    numbering_counters = {}
-    heading_num_ids = set()
-
-    # 用於處理連續列表的變數
-    current_list_block = []
-
-    def flush_list():
-        if current_list_block:
-            output_blocks.append("\n".join(current_list_block))
-            current_list_block.clear()
-
-    for paragraph in document.paragraphs:
-        if get_heading_level(paragraph):
-            list_info = get_list_marker(paragraph, document)
-            if list_info and list_info["format"] != "bullet":
-                heading_num_ids.add(list_info["num_id"])
-
-    for element in document.element.body:
-        if element.tag == qn("w:tbl"):
-            flush_list()  # 遇到表格前，先把累積的列表輸出
-            table_output = convert_table(element, document, image_dir, image_map)
-            if table_output:
-                output_blocks.append(table_output)
-            continue
-
-        if element.tag != qn("w:p"):
-            continue
-
-        paragraph = Paragraph(element, document)
-        parts = []
-
-        for child in element:
-            parts.append(convert_inline(child, paragraph, image_dir, image_map))
-
-        text = "".join(parts).strip()
-        plain_text = paragraph.text.strip()
-
-        if not text:
-            continue
-
-        heading_level = get_heading_level(paragraph)
-        list_info = get_list_marker(paragraph, document)
-        list_number = None
-
-        if list_info and list_info["format"] != "bullet":
-            counter_key = (list_info["num_id"], list_info["ilvl"])
-            numbering_counters[counter_key] = numbering_counters.get(counter_key, 0) + 1
-            list_number = numbering_counters[counter_key]
-
-        is_heading_sequence = bool(
-            list_info
-            and list_info["num_id"] in heading_num_ids
-            and list_info["format"] != "bullet"
+    if article_dir.exists():
+        raise FileExistsError(
+            f"文章資料夾已存在，為避免覆寫或混入既有檔案而中止轉換：{article_dir}"
         )
 
-        heading_prefix = ""
-        if is_heading_sequence:
-            heading_prefix = f"{list_number}. "
+    try:
+        article_dir.mkdir(parents=True, exist_ok=True)
+        image_dir.mkdir(parents=True, exist_ok=True)
 
-        # 根據類型加入輸出
-        if is_heading_sequence:
-            flush_list()
-            # 修正：保留原本的標題層級，不再強制變成 ##
-            level = heading_level if heading_level else 2
-            output_blocks.append(f"{'#' * level} {heading_prefix}{plain_text}")
-        elif heading_level:
-            flush_list()
-            output_blocks.append(f"{'#' * heading_level} {plain_text}")
-        elif is_quote_paragraph(paragraph):
-            flush_list()
-            output_blocks.append(f"> {text}")
-        elif list_info:
-            # 列表不直接加入 output_blocks，而是先暫存到 current_list_block
-            if list_info["format"] == "bullet":
-                current_list_block.append(f"{list_info['indent']}- {text}")
+        print(f"已成功讀取：{input_path.name}")
+        print(f"文章標題：{title}\n========== 開始轉換 ==========\n")
+
+        image_map = {}
+        output_blocks = []  # 改為儲存區塊 (Block)
+        numbering_counters = {}
+        heading_num_ids = set()
+
+        # 用於處理連續列表的變數
+        current_list_block = []
+
+        def flush_list():
+            if current_list_block:
+                output_blocks.append("\n".join(current_list_block))
+                current_list_block.clear()
+
+        for paragraph in document.paragraphs:
+            if get_heading_level(paragraph):
+                list_info = get_list_marker(paragraph, document)
+                if list_info and list_info["format"] != "bullet":
+                    heading_num_ids.add(list_info["num_id"])
+
+        for element in document.element.body:
+            if element.tag == qn("w:tbl"):
+                flush_list()  # 遇到表格前，先把累積的列表輸出
+                table_output = convert_table(element, document, image_dir, image_map)
+                if table_output:
+                    output_blocks.append(table_output)
+                continue
+
+            if element.tag != qn("w:p"):
+                continue
+
+            paragraph = Paragraph(element, document)
+            parts = []
+
+            for child in element:
+                parts.append(convert_inline(child, paragraph, image_dir, image_map))
+
+            text = "".join(parts).strip()
+            plain_text = paragraph.text.strip()
+
+            if not text:
+                continue
+
+            heading_level = get_heading_level(paragraph)
+            list_info = get_list_marker(paragraph, document)
+            list_number = None
+
+            if list_info and list_info["format"] != "bullet":
+                counter_key = (list_info["num_id"], list_info["ilvl"])
+                numbering_counters[counter_key] = (
+                    numbering_counters.get(counter_key, 0) + 1
+                )
+                list_number = numbering_counters[counter_key]
+
+            is_heading_sequence = bool(
+                list_info
+                and list_info["num_id"] in heading_num_ids
+                and list_info["format"] != "bullet"
+            )
+
+            heading_prefix = ""
+            if is_heading_sequence:
+                heading_prefix = f"{list_number}. "
+
+            # 根據類型加入輸出
+            if is_heading_sequence:
+                flush_list()
+                # 修正：保留原本的標題層級，不再強制變成 ##
+                level = heading_level if heading_level else 2
+                output_blocks.append(f"{'#' * level} {heading_prefix}{plain_text}")
+            elif heading_level:
+                flush_list()
+                output_blocks.append(f"{'#' * heading_level} {plain_text}")
+            elif is_quote_paragraph(paragraph):
+                flush_list()
+                output_blocks.append(f"> {text}")
+            elif list_info:
+                # 列表不直接加入 output_blocks，而是先暫存到 current_list_block
+                if list_info["format"] == "bullet":
+                    current_list_block.append(f"{list_info['indent']}- {text}")
+                else:
+                    current_list_block.append(
+                        f"{list_info['indent']}{list_number}. {text}"
+                    )
             else:
-                current_list_block.append(f"{list_info['indent']}{list_number}. {text}")
-        else:
-            flush_list()
-            output_blocks.append(text)
+                flush_list()
+                output_blocks.append(text)
 
-    flush_list()  # 文件結束前，把最後的列表輸出
+        flush_list()  # 文件結束前，把最後的列表輸出
 
-    hero_image = ""
-    if image_map:
-        first_image = next(iter(image_map.values()))
-        hero_image = f"heroImage: ./images/{first_image}\n"
+        hero_image = ""
+        if image_map:
+            first_image = next(iter(image_map.values()))
+            hero_image = f"heroImage: ./images/{first_image}\n"
 
-    frontmatter = (
-        "---\n"
-        f"title: {yaml_quote(title)}\n"
-        f"description: {yaml_quote(args.description)}\n"
-        f"pubDate: {args.date}\n"
-        f"{hero_image}"
-        "---\n\n"
-    )
+        frontmatter = (
+            "---\n"
+            f"title: {yaml_quote(title)}\n"
+            f"description: {yaml_quote(args.description)}\n"
+            f"pubDate: {args.date}\n"
+            f"{hero_image}"
+            "---\n\n"
+        )
 
-    output_path.write_text(
-        frontmatter + "\n\n".join(output_blocks) + "\n",
-        encoding="utf-8",
-    )
+        content = frontmatter + "\n\n".join(output_blocks) + "\n"
 
-    print("\n========== 轉換完成 ==========")
-    print(f"文章：{output_path.resolve()}")
-    print(f"圖片：{len(image_map)} 張")
+        # Detect whether the article requires MDX.
+        mdx_components = (
+            "Figure",
+            "ImageGallery",
+            "ImageCompare",
+            "ImageLightbox",
+            "HeaderLink",
+        )
+
+        requires_mdx = any(
+            re.search(
+                rf"<{re.escape(component)}(?=[\s/>])",
+                content,
+            )
+            for component in mdx_components
+        )
+
+        extension = ".mdx" if requires_mdx else ".md"
+        output_path = article_dir / f"index{extension}"
+
+        output_path.write_text(
+            content,
+            encoding="utf-8",
+        )
+
+        print("\n========== 轉換完成 ==========")
+        print(f"文章：{output_path.resolve()}")
+        print(f"圖片：{len(image_map)} 張")
+
+    except Exception:
+        shutil.rmtree(article_dir, ignore_errors=True)
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FileNotFoundError as error:
+        print("\n========== 轉換失敗 ==========")
+        print(error)
+        print("請確認檔案名稱及所在位置。")
+    except FileExistsError as error:
+        print("\n========== 轉換失敗 ==========")
+        print(error)
+    except ValueError as error:
+        print("\n========== 轉換失敗 ==========")
+        print(error)
+    except Exception as error:
+        print("\n========== 發生未預期錯誤 ==========")
+        print(f"{type(error).__name__}: {error}")
+        raise
