@@ -27,22 +27,34 @@ def escape_markdown(text):
 
 
 def format_text(text, run):
-    text = escape_markdown(text)
+    if not text:
+        return text
 
-    # 新增：處理底線與刪除線
+    # 1. 先把前后空白拆出来（含半角/全角空格、tab）
+    stripped = text.strip()
+    if not stripped:
+        return text
+
+    leading = text[: len(text) - len(text.lstrip())]
+    trailing = text[len(text.rstrip()) :]
+
+    # 2. 只对正文做转义和加格式标记
+    body = escape_markdown(stripped)
+
     if run.underline:
-        text = f"<u>{text}</u>"
+        body = f"<u>{body}</u>"
     if getattr(run.font, "strike", False):
-        text = f"~~{text}~~"
+        body = f"~~{body}~~"
 
     if run.bold and run.italic:
-        return f"***{text}***"
-    if run.bold:
-        return f"**{text}**"
-    if run.italic:
-        return f"*{text}*"
+        body = f"***{body}***"
+    elif run.bold:
+        body = f"**{body}**"
+    elif run.italic:
+        body = f"*{body}*"
 
-    return text
+    # 3. 空白原样拼回标记外面
+    return leading + body + trailing
 
 
 def extract_image(blip, paragraph, image_dir, image_map):
@@ -420,6 +432,7 @@ def main():
                     )
             else:
                 flush_list()
+                text = "\n".join(line.lstrip() for line in text.split("\n"))
                 output_blocks.append(text)
 
         flush_list()  # 文件結束前，把最後的列表輸出
