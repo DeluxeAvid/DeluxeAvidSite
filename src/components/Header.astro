@@ -61,13 +61,62 @@ import HeaderLink from "./HeaderLink.astro";
         </svg>
       </a>
     </div>
+    <div class="theme-control">
+      <label class="sr-only" for="theme-select">
+        顯示模式
+      </label>
+      <select id="theme-select" aria-label="選擇顯示模式">
+        <option value="system">跟隨系統</option>
+        <option value="light">明亮模式</option>
+        <option value="dark">暗色模式</option>
+      </select>
+    </div>
   </nav>
 </header>
+<script>
+  const themeSelect = document.querySelector<HTMLSelectElement>("#theme-select");
+
+  if (themeSelect) {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function getSavedTheme() {
+      const savedTheme = localStorage.getItem("theme");
+      return savedTheme === "light" || savedTheme === "dark"
+        ? savedTheme
+        : "system";
+    }
+
+    function applyTheme(theme: string) {
+      const resolvedTheme =
+        theme === "system"
+          ? mediaQuery.matches
+            ? "dark"
+            : "light"
+          : theme;
+
+      document.documentElement.dataset.theme = resolvedTheme;
+    }
+
+    themeSelect.value = getSavedTheme();
+
+    themeSelect.addEventListener("change", () => {
+      const selectedTheme = themeSelect.value;
+      localStorage.setItem("theme", selectedTheme);
+      applyTheme(selectedTheme);
+    });
+
+    mediaQuery.addEventListener("change", () => {
+      if (getSavedTheme() === "system") {
+        applyTheme("system");
+      }
+    });
+  }
+</script>
 <style>
   header {
     margin: 0;
     padding: 0 1em;
-    background: white;
+    background: var(--surface-bg);
     box-shadow: 0 2px 8px rgba(var(--black), 5%);
   }
   h2 {
@@ -86,7 +135,7 @@ import HeaderLink from "./HeaderLink.astro";
   }
   nav a {
     padding: 1em 0.5em;
-    color: var(--black);
+    color: var(--text-primary);
     border-bottom: 4px solid transparent;
     text-decoration: none;
   }
@@ -97,6 +146,22 @@ import HeaderLink from "./HeaderLink.astro";
   .social-links,
   .social-links a {
     display: flex;
+  }
+    .theme-control {
+    display: flex;
+    align-items: center;
+    margin-left: 0.5rem;
+  }
+
+  .theme-control select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid rgb(var(--gray-light));
+    border-radius: 6px;
+    background: var(--surface-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
   }
   @media (max-width: 720px) {
     .social-links {
