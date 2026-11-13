@@ -74,43 +74,70 @@ import HeaderLink from "./HeaderLink.astro";
   </nav>
 </header>
 <script>
-  const themeSelect = document.querySelector<HTMLSelectElement>("#theme-select");
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-  if (themeSelect) {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  function getSavedTheme() {
+    const savedTheme = localStorage.getItem("theme");
 
-    function getSavedTheme() {
-      const savedTheme = localStorage.getItem("theme");
-      return savedTheme === "light" || savedTheme === "dark"
-        ? savedTheme
-        : "system";
-    }
-
-    function applyTheme(theme: string) {
-      const resolvedTheme =
-        theme === "system"
-          ? mediaQuery.matches
-            ? "dark"
-            : "light"
-          : theme;
-
-      document.documentElement.dataset.theme = resolvedTheme;
-    }
-
-    themeSelect.value = getSavedTheme();
-
-    themeSelect.addEventListener("change", () => {
-      const selectedTheme = themeSelect.value;
-      localStorage.setItem("theme", selectedTheme);
-      applyTheme(selectedTheme);
-    });
-
-    mediaQuery.addEventListener("change", () => {
-      if (getSavedTheme() === "system") {
-        applyTheme("system");
-      }
-    });
+    return savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : "system";
   }
+
+  function applyTheme(theme: string) {
+    const resolvedTheme =
+      theme === "system"
+        ? mediaQuery.matches
+          ? "dark"
+          : "light"
+        : theme;
+
+    document.documentElement.dataset.theme = resolvedTheme;
+  }
+
+  function syncThemeSelect() {
+    const themeSelect =
+      document.querySelector<HTMLSelectElement>("#theme-select");
+
+    if (themeSelect) {
+      themeSelect.value = getSavedTheme();
+    }
+  }
+
+  // 使用事件委派，讓頁面切換後的新選單也能正常運作
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+
+    if (
+      !(target instanceof HTMLSelectElement) ||
+      target.id !== "theme-select"
+    ) {
+      return;
+    }
+
+    const selectedTheme = target.value;
+
+    localStorage.setItem("theme", selectedTheme);
+    applyTheme(selectedTheme);
+  });
+
+  // 系統主題變化時更新網站顯示
+  mediaQuery.addEventListener("change", () => {
+    if (getSavedTheme() === "system") {
+      applyTheme("system");
+    }
+  });
+
+  document.addEventListener("astro:after-swap", () => {
+  applyTheme(getSavedTheme());
+  syncThemeSelect();
+  });
+
+  // 頁面導航完成後同步選單
+  document.addEventListener("astro:page-load", syncThemeSelect);
+
+  // 初次載入時同步選單
+  syncThemeSelect();
 </script>
 <style>
   header {
