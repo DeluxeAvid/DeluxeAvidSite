@@ -2,6 +2,7 @@
 import BaseHead from '../components/BaseHead.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import MusicPlayer from '../components/music-player/MusicPlayer.astro';
 import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
 
 interface Props {
@@ -28,5 +29,6 @@ const {
             <slot />
         </main>
         <Footer />
+        <MusicPlayer />
     </body>
 </html>

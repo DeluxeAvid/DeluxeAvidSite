@@ -61,13 +61,89 @@ import HeaderLink from "./HeaderLink.astro";
         </svg>
       </a>
     </div>
+    <div class="theme-control">
+      <label class="sr-only" for="theme-select">
+        顯示模式
+      </label>
+      <select id="theme-select" aria-label="選擇顯示模式">
+        <option value="system">跟隨系統</option>
+        <option value="light">明亮模式</option>
+        <option value="dark">暗色模式</option>
+      </select>
+    </div>
   </nav>
 </header>
+<script>
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function getSavedTheme() {
+    const savedTheme = localStorage.getItem("theme");
+
+    return savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : "system";
+  }
+
+  function applyTheme(theme: string) {
+    const resolvedTheme =
+      theme === "system"
+        ? mediaQuery.matches
+          ? "dark"
+          : "light"
+        : theme;
+
+    document.documentElement.dataset.theme = resolvedTheme;
+  }
+
+  function syncThemeSelect() {
+    const themeSelect =
+      document.querySelector<HTMLSelectElement>("#theme-select");
+
+    if (themeSelect) {
+      themeSelect.value = getSavedTheme();
+    }
+  }
+
+  // 使用事件委派，讓頁面切換後的新選單也能正常運作
+  document.addEventListener("change", (event) => {
+    const target = event.target;
+
+    if (
+      !(target instanceof HTMLSelectElement) ||
+      target.id !== "theme-select"
+    ) {
+      return;
+    }
+
+    const selectedTheme = target.value;
+
+    localStorage.setItem("theme", selectedTheme);
+    applyTheme(selectedTheme);
+  });
+
+  // 系統主題變化時更新網站顯示
+  mediaQuery.addEventListener("change", () => {
+    if (getSavedTheme() === "system") {
+      applyTheme("system");
+    }
+  });
+
+  document.addEventListener("astro:after-swap", () => {
+  applyTheme(getSavedTheme());
+  syncThemeSelect();
+  });
+
+  // 頁面導航完成後同步選單
+  document.addEventListener("astro:page-load", syncThemeSelect);
+
+  // 初次載入時同步選單
+  syncThemeSelect();
+</script>
 <style>
   header {
     margin: 0;
     padding: 0 1em;
-    background: white;
+    background: var(--surface-bg);
     box-shadow: 0 2px 8px rgba(var(--black), 5%);
   }
   h2 {
@@ -86,7 +162,7 @@ import HeaderLink from "./HeaderLink.astro";
   }
   nav a {
     padding: 1em 0.5em;
-    color: var(--black);
+    color: var(--text-primary);
     border-bottom: 4px solid transparent;
     text-decoration: none;
   }
@@ -97,6 +173,22 @@ import HeaderLink from "./HeaderLink.astro";
   .social-links,
   .social-links a {
     display: flex;
+  }
+    .theme-control {
+    display: flex;
+    align-items: center;
+    margin-left: 0.5rem;
+  }
+
+  .theme-control select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid rgb(var(--gray-light));
+    border-radius: 6px;
+    background: var(--surface-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
   }
   @media (max-width: 720px) {
     .social-links {

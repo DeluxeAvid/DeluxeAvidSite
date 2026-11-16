@@ -27,3 +27,6 @@ pnpm-debug.log*
 .venv/
 __pycache__/
 *.py[cod]
+
+# Local music files
+public/music/*.mp3
