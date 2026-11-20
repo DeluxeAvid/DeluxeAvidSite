@@ -19,11 +19,25 @@ def parse_args():
     parser.add_argument("input", type=Path, help="Source .docx file")
     parser.add_argument("--date", required=True, help="Publication date (YYYY-MM-DD)")
     parser.add_argument("--description", required=True, help="Article description")
+    parser.add_argument(
+        "--hero-image",
+        help="Optional hero image filename located beside the source .docx file",
+    )
     return parser.parse_args()
 
 
 def escape_markdown(text):
-    return re.sub(r"([\\`*_{}\[\]])", r"\\\1", text)
+    return re.sub(r"([\\`_{}\[\]])", r"\\\1", text)
+
+
+def merge_adjacent_bold(text):
+    """把 **A****B** 合并成 **AB**。"""
+    pattern = re.compile(r"\*\*([^*]+)\*\*\*\*([^*]+)\*\*")
+    previous = None
+    while previous != text:
+        previous = text
+        text = pattern.sub(r"**\1\2**", text)
+    return text
 
 
 def format_text(text, run):
@@ -41,10 +55,24 @@ def format_text(text, run):
     # 2. 只对正文做转义和加格式标记
     body = escape_markdown(stripped)
 
+    # 3. 先处理字体颜色
+    color = None
+
+    if run.font.color and run.font.color.rgb:
+        rgb = str(run.font.color.rgb).upper()
+
+        if rgb != "000000":
+            color = f"#{rgb}"
+
+    if color:
+        body = f'<span style={{{{ color: "{color}" }}}}>{body}</span>'
+
+    # 4. 再处理下划线、删除线、粗体和斜体
     if run.underline:
         body = f"<u>{body}</u>"
+
     if getattr(run.font, "strike", False):
-        body = f"~~{body}~~"
+        body = f"<del>{body}</del>"
 
     if run.bold and run.italic:
         body = f"***{body}***"
@@ -53,32 +81,68 @@ def format_text(text, run):
     elif run.italic:
         body = f"*{body}*"
 
-    # 3. 空白原样拼回标记外面
+    # 5. 空白原样拼回标记外面
     return leading + body + trailing
 
 
-def extract_image(blip, paragraph, image_dir, image_map):
+def register_image(blip, paragraph, image_dir, image_map):
+    """提取圖片並回傳可供後續排版使用的中繼資料。"""
     relationship_id = blip.get(qn("r:embed"))
-
     if not relationship_id:
-        return ""
+        return None
 
     if relationship_id not in image_map:
         image_part = paragraph.part.related_parts[relationship_id]
         extension = Path(str(image_part.partname)).suffix.lower() or ".bin"
-
         filename = f"image-{len(image_map) + 1:02d}{extension}"
-        image_path = image_dir / filename
-        image_path.write_bytes(image_part.blob)
-
+        (image_dir / filename).write_bytes(image_part.blob)
         image_map[relationship_id] = filename
-        # print(f"[圖片 {len(image_map)}] {filename}") # 建議註解掉，避免終端機洗版
 
     filename = image_map[relationship_id]
+    return filename
+
+
+def get_anchor_metadata(drawing, filename):
+    """讀取 Word 浮動圖片的尺寸及定位資訊。"""
+    anchor = drawing.find(".//" + qn("wp:anchor"))
+    if anchor is None:
+        return None
+
+    extent = anchor.find(qn("wp:extent"))
+    width = int(extent.get("cx", "0")) if extent is not None else 0
+    height = int(extent.get("cy", "0")) if extent is not None else 0
+
+    def read_position(tag):
+        node = anchor.find(qn(tag))
+        if node is None:
+            return None, None
+        if len(node):
+            child = node[0]
+            if child.tag == qn("wp:posOffset"):
+                return node.get("relativeFrom"), int(child.text or "0")
+            if child.tag == qn("wp:align"):
+                return node.get("relativeFrom"), child.text
+        return node.get("relativeFrom"), None
+
+    h_relative, h_value = read_position("wp:positionH")
+    v_relative, v_value = read_position("wp:positionV")
+
+    return {
+        "filename": filename,
+        "width": width,
+        "height": height,
+        "h_relative": h_relative,
+        "h_value": h_value,
+        "v_relative": v_relative,
+        "v_value": v_value,
+    }
+
+
+def image_markdown(filename):
     return f"\n\n![{filename}](./images/{filename})\n\n"
 
 
-def convert_inline(element, paragraph, image_dir, image_map):
+def convert_inline(element, paragraph, image_dir, image_map, floating_images=None):
     result = []
 
     if element.tag == qn("w:r"):
@@ -88,16 +152,25 @@ def convert_inline(element, paragraph, image_dir, image_map):
             if child.tag == qn("w:t"):
                 result.append(format_text(child.text or "", run))
 
-            elif child.tag in (qn("w:tab"),):
+            elif child.tag == qn("w:tab"):
                 result.append("    ")
 
             elif child.tag in (qn("w:br"), qn("w:cr")):
-                # 一般段落內的軟換行，建議轉為兩個空白+換行，或直接保留 \n
                 result.append("  \n")
 
             elif child.tag == qn("w:drawing"):
+                anchor = child.find(".//" + qn("wp:anchor"))
                 for blip in child.iter(qn("a:blip")):
-                    result.append(extract_image(blip, paragraph, image_dir, image_map))
+                    filename = register_image(blip, paragraph, image_dir, image_map)
+                    if not filename:
+                        continue
+
+                    if anchor is not None and floating_images is not None:
+                        metadata = get_anchor_metadata(child, filename)
+                        if metadata:
+                            floating_images.append(metadata)
+                    else:
+                        result.append(image_markdown(filename))
 
     elif element.tag == qn("w:hyperlink"):
         relationship_id = element.get(qn("r:id"))
@@ -105,11 +178,175 @@ def convert_inline(element, paragraph, image_dir, image_map):
 
         if relationship_id:
             url = paragraph.part.rels[relationship_id].target_ref
-            result.append(f"[{escape_markdown(text)}]({url})")
+            result.append(
+                f'<a href="{url}" target="_blank" rel="noopener noreferrer">'
+                f"{escape_markdown(text)}</a>"
+            )
         else:
             result.append(escape_markdown(text))
 
     return "".join(result)
+
+
+def render_gallery(images, columns):
+    """將一組浮動圖片轉成 ImageGallery MDX。"""
+    entries = []
+    for item in sorted(images, key=lambda image: image["filename"]):
+        filename = item["filename"]
+        alias = Path(filename).stem.replace("-", "_")
+        entries.append(f"    {{ src: {alias}, alt: {yaml_quote(filename)} }}")
+    return (
+        f"<ImageGallery columns={{{columns}}} images={{[\n"
+        + ",\n".join(entries)
+        + "\n]} />"
+    )
+
+
+def render_floating_image_groups(blocks, floating_blocks, page_width):
+    """依照浮動圖片的相對位置及尺寸，辨識明確的並列圖片組。"""
+    rendered = {}
+    pending = []
+    pending_markers = []
+    block_positions = {block: index for index, block in enumerate(blocks)}
+
+    def is_compact(item):
+        return bool(item["width"] and item["width"] <= page_width * 0.55)
+
+    def similar_size(items):
+        if len(items) < 2:
+            return True
+        widths = [item["width"] for item in items]
+        ratios = [item["width"] / item["height"] for item in items if item["height"]]
+        return max(widths) <= min(widths) * 1.18 and (
+            not ratios or max(ratios) <= min(ratios) * 1.18
+        )
+
+    def flush_pending_to_previous_marker():
+        nonlocal pending, pending_markers
+        if not pending or not pending_markers:
+            pending = []
+            pending_markers = []
+            return
+        target = pending_markers[-1]
+        singles = "\n\n".join(
+            image_markdown(item["filename"]).strip() for item in pending
+        )
+        previous = rendered.get(target, "")
+        rendered[target] = "\n\n".join(part for part in (previous, singles) if part)
+        pending = []
+        pending_markers = []
+
+    for marker in blocks:
+        if marker not in floating_blocks:
+            # 正文段落打斷了圖片組；不能把相隔一段文字的單圖錯誤合併。
+            flush_pending_to_previous_marker()
+            continue
+
+        items = floating_blocks[marker]
+        compact = [item for item in items if is_compact(item)]
+        large = [item for item in items if not is_compact(item)]
+        output_parts = []
+
+        # 四張尺寸相近的圖片若同屬一個 Word 段落，通常是 2×2 圖片組。
+        if len(compact) == 4 and similar_size(compact):
+            if pending:
+                for item in pending:
+                    output_parts.append(image_markdown(item["filename"]).strip())
+                pending = []
+                pending_markers = []
+            output_parts.append(render_gallery(compact, 2))
+        elif (
+            len(compact) == 3
+            and not pending
+            and similar_size(compact)
+            and block_positions[marker] + 1 < len(blocks)
+            and blocks[block_positions[marker] + 1] in floating_blocks
+            and len(floating_blocks[blocks[block_positions[marker] + 1]]) == 2
+            and all(
+                is_compact(item)
+                for item in floating_blocks[blocks[block_positions[marker] + 1]]
+            )
+            and similar_size(floating_blocks[blocks[block_positions[marker] + 1]])
+        ):
+            # 同段落三張小圖，且緊接段落另有兩張同尺寸圖片時，
+            # 將前兩張組成雙欄，後三張組成三欄。
+            output_parts.append(render_gallery(compact[:2], 2))
+            pending = [compact[2]]
+        else:
+            # 同一水平位置的圖片視為一列；其餘圖片可與緊鄰段落合併。
+            rows = []
+            remaining = list(compact)
+            while remaining:
+                first = remaining.pop(0)
+                row = [first]
+                first_y = first.get("v_value")
+                if isinstance(first_y, int):
+                    matched = [
+                        item
+                        for item in remaining
+                        if isinstance(item.get("v_value"), int)
+                        and abs(item["v_value"] - first_y) <= 180000
+                    ]
+                    if matched:
+                        row.extend(matched)
+                        remaining = [item for item in remaining if item not in matched]
+                rows.append(row)
+
+            for row in rows:
+                if len(row) >= 2 and similar_size(row):
+                    combined = pending + row
+                    if pending and len(combined) == 3 and similar_size(combined):
+                        output_parts.append(render_gallery(combined, 3))
+                        pending = []
+                        pending_markers = []
+                    else:
+                        output_parts.append(render_gallery(row, min(len(row), 4)))
+                else:
+                    pending.extend(row)
+
+            # 三張尺寸相近、跨相鄰段落的浮動圖片，視為一組三欄圖庫。
+            if len(pending) == 3 and similar_size(pending):
+                output_parts.append(render_gallery(pending, 3))
+                pending = []
+                pending_markers = []
+
+            # 大圖代表前一組小圖已結束，先輸出尚未成組的圖片。
+            if large and pending:
+                output_parts.extend(
+                    image_markdown(item["filename"]).strip() for item in pending
+                )
+                pending = []
+                pending_markers = []
+
+            output_parts.extend(
+                image_markdown(item["filename"]).strip() for item in large
+            )
+
+        rendered[marker] = "\n\n".join(part for part in output_parts if part)
+        if pending:
+            pending_markers.append(marker)
+
+    # 文件結尾仍未配成組的圖片，按普通單圖輸出。
+    if pending:
+        last_marker = pending_markers[-1] if pending_markers else None
+        if last_marker:
+            previous = rendered.get(last_marker, "")
+            singles = "\n\n".join(
+                image_markdown(item["filename"]).strip() for item in pending
+            )
+            rendered[last_marker] = "\n\n".join(
+                part for part in (previous, singles) if part
+            )
+
+    result = []
+    for block in blocks:
+        if block in floating_blocks:
+            value = rendered.get(block, "")
+            if value:
+                result.append(value)
+        else:
+            result.append(block)
+    return result
 
 
 def convert_table_paragraph(paragraph_element, paragraph, image_dir, image_map):
@@ -132,9 +369,11 @@ def convert_table_paragraph(paragraph_element, paragraph, image_dir, image_map):
 
                 elif run_child.tag == qn("w:drawing"):
                     for blip in run_child.iter(qn("a:blip")):
-                        run_parts.append(
-                            extract_image(blip, paragraph, image_dir, image_map)
-                        )
+                        filename = register_image(blip, paragraph, image_dir, image_map)
+                        if filename:
+                            run_parts.append(
+                                f'<img src="./images/{filename}" alt="{filename}" />'
+                            )
 
             parts.append("".join(run_parts))
 
@@ -344,11 +583,24 @@ def main():
         article_dir.mkdir(parents=True, exist_ok=True)
         image_dir.mkdir(parents=True, exist_ok=True)
 
+        custom_hero_image = None
+
+        if args.hero_image:
+            hero_source = input_path.parent / args.hero_image
+
+            if not hero_source.is_file():
+                raise FileNotFoundError(f"找不到指定的封面圖片：{hero_source}")
+
+            custom_hero_image = hero_source.name
+            shutil.copy2(hero_source, image_dir / custom_hero_image)
+
         print(f"已成功讀取：{input_path.name}")
         print(f"文章標題：{title}\n========== 開始轉換 ==========\n")
 
         image_map = {}
-        output_blocks = []  # 改為儲存區塊 (Block)
+        output_blocks = []
+        floating_blocks = {}
+        floating_block_counter = 0
         numbering_counters = {}
         heading_num_ids = set()
 
@@ -379,14 +631,24 @@ def main():
 
             paragraph = Paragraph(element, document)
             parts = []
+            paragraph_floating_images = []
 
             for child in element:
-                parts.append(convert_inline(child, paragraph, image_dir, image_map))
+                parts.append(
+                    convert_inline(
+                        child,
+                        paragraph,
+                        image_dir,
+                        image_map,
+                        paragraph_floating_images,
+                    )
+                )
 
             text = "".join(parts).strip()
+            text = merge_adjacent_bold(text)
             plain_text = paragraph.text.strip()
 
-            if not text:
+            if not text and not paragraph_floating_images:
                 continue
 
             heading_level = get_heading_level(paragraph)
@@ -433,12 +695,30 @@ def main():
             else:
                 flush_list()
                 text = "\n".join(line.lstrip() for line in text.split("\n"))
-                output_blocks.append(text)
+                if text:
+                    output_blocks.append(text)
+
+            if paragraph_floating_images:
+                flush_list()
+                floating_block_counter += 1
+                marker = f"__FLOATING_IMAGES_BLOCK_{floating_block_counter}__"
+                floating_blocks[marker] = paragraph_floating_images
+                output_blocks.append(marker)
 
         flush_list()  # 文件結束前，把最後的列表輸出
 
+        page_width = (
+            int(document.sections[0].page_width) if document.sections else 7772400
+        )
+        output_blocks = render_floating_image_groups(
+            output_blocks, floating_blocks, page_width
+        )
+
         hero_image = ""
-        if image_map:
+
+        if custom_hero_image:
+            hero_image = f"heroImage: ./images/{custom_hero_image}\n"
+        elif image_map:
             first_image = next(iter(image_map.values()))
             hero_image = f"heroImage: ./images/{first_image}\n"
 
@@ -453,6 +733,28 @@ def main():
 
         content = frontmatter + "\n\n".join(output_blocks) + "\n"
 
+        gallery_images = []
+        for marker_images in floating_blocks.values():
+            for item in marker_images:
+                # 僅為實際生成的 ImageGallery 圖片建立靜態 import。
+                if (
+                    item["filename"] in content
+                    and f"src: {Path(item['filename']).stem.replace('-', '_')}"
+                    in content
+                ):
+                    gallery_images.append(item["filename"])
+        gallery_images = list(dict.fromkeys(gallery_images))
+        if gallery_images:
+            imports = [
+                "import ImageGallery from '../../../components/ImageGallery.astro';"
+            ]
+            for filename in gallery_images:
+                alias = Path(filename).stem.replace("-", "_")
+                imports.append(f"import {alias} from './images/{filename}';")
+            content = (
+                frontmatter + "\n".join(imports) + "\n\n" + content[len(frontmatter) :]
+            )
+
         # Detect whether the article requires MDX.
         mdx_components = (
             "Figure",
@@ -460,6 +762,9 @@ def main():
             "ImageCompare",
             "ImageLightbox",
             "HeaderLink",
+            "span",
+            "u",
+            "del",
         )
 
         requires_mdx = any(
